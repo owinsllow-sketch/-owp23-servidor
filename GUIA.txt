@@ -1,0 +1,79 @@
+==================================================
+  OWP23 - GUIA SIMPLES DO SERVIDOR (Oni World Production)
+==================================================
+
+PARA QUE SERVE ESTE SERVIDOR
+----------------------------
+O site (owp23.netlify.app) ja funciona sozinho. Mas para ter:
+   - inicio de sessao e contas de clientes
+   - painel de mensagens / notificacoes
+   - painel de administracao (/admin) para ver reservas e avisar clientes
+...precisa deste servidor a correr online. O site sozinho nao consegue
+guardar contas nem enviar mensagens.
+
+
+O QUE ESTA AQUI DENTRO
+----------------------
+   server.js        -> o programa do servidor
+   package.json     -> lista o que e preciso instalar (Express)
+   .env.example     -> modelo com as suas chaves secretas
+   GUIA.txt         -> este guia
+
+
+PASSO A PASSO (publicar online, de graca)
+-----------------------------------------
+Recomendado: Render.com (gratuito, facil). Tambem serve Railway ou Fly.io.
+
+1) Crie uma conta em https://render.com
+2) Carregue esta pasta para um repositorio no GitHub
+   (ou use a opcao de carregar manualmente).
+3) Em Render: New -> Web Service -> escolha o repositorio.
+4) Comando de arranque:   npm start
+5) Em "Environment" adicione duas variaveis (sao as suas chaves):
+      ADMIN_KEY     = uma chave forte so sua (ex.: Owp23#Segura!9271)
+      AUTH_SECRET   = outro texto longo e aleatorio
+6) Clique em Deploy e espere. No fim vai ter um endereco, por exemplo:
+      https://owp23-servidor.onrender.com
+
+
+LIGAR O SITE AO SERVIDOR
+------------------------
+1) Abra o ficheiro do site (OWP23-standalone.html).
+2) Procure a linha:   const BACKEND_URL = '';
+3) Ponha la o endereco do servidor, por exemplo:
+      const BACKEND_URL = 'https://owp23-servidor.onrender.com';
+4) Guarde e volte a publicar no Netlify.
+
+Enquanto BACKEND_URL estiver vazio, o site funciona na mesma, mas as
+contas e as mensagens ficam desligadas (aparece um aviso ao cliente).
+
+
+PAINEL DE ADMINISTRACAO
+-----------------------
+Abra:   https://o-seu-servidor.onrender.com/admin
+Escreva a sua ADMIN_KEY e entra. La pode:
+   - ver os clientes registados
+   - ver todas as reservas
+   - confirmar uma reserva (o cliente recebe aviso)
+   - enviar uma mensagem/notificacao a um cliente
+
+
+TESTAR NO SEU COMPUTADOR (opcional)
+-----------------------------------
+1) Instale o Node.js (nodejs.org).
+2) Copie .env.example para .env e mude as chaves.
+3) Na pasta, corra:   npm install   e depois   npm start
+4) Abra:   http://localhost:3000/admin
+
+
+NOTAS DE SEGURANCA
+------------------
+   - NUNCA partilhe a ADMIN_KEY nem o AUTH_SECRET.
+   - As palavras-passe dos clientes sao guardadas cifradas (scrypt).
+   - Os dados ficam no ficheiro data.json ao lado do servidor.
+     Faca copia de seguranca de vez em quando.
+
+PAGAMENTOS
+----------
+Continua a usar o Multicaixa Express (927 230 320) com confirmacao por
+WhatsApp, tal como no site. Este servidor nao mexe no pagamento.
