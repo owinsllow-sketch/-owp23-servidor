@@ -17,6 +17,7 @@ try {
   }
 } catch(e){}
 
+const VERSION     = 'OWP23-2026-10-23-r1'; // marcador para confirmar qual codigo esta live
 const PORT        = process.env.PORT || 3000;
 const HOST        = process.env.HOST || '0.0.0.0';
 const ADMIN_KEY   = process.env.ADMIN_KEY   || 'muda-isto-123';
@@ -47,6 +48,7 @@ const ADMIN_HTML = `<!doctype html><html lang="pt"><head><meta charset="utf-8">
    <button onclick="start()">Entrar</button>
   </div>
   <div class="muted">A chave fica so neste navegador.</div>
+  <div id="msg" class="muted" style="margin-top:8px"></div>
  </div>
  <div id="app" style="display:none">
   <div class="card"><h3>Clientes</h3><div id="users"></div></div>
@@ -63,14 +65,14 @@ const ADMIN_HTML = `<!doctype html><html lang="pt"><head><meta charset="utf-8">
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
 function K(){return localStorage.getItem('owp23_admin_key')||'';}
 async function api(p,opt){opt=opt||{};opt.headers=Object.assign({'Content-Type':'application/json','X-Admin-Key':K()},opt.headers||{});const r=await fetch(p,opt);if(!r.ok)throw new Error((await r.json()).error||'erro');return r.json();}
-async function start(){const k=document.getElementById('key').value.trim();localStorage.setItem('owp23_admin_key',k);try{await load();document.getElementById('app').style.display='';}catch(e){alert(e.message);}}
+async function start(){var k=document.getElementById('key').value.trim();localStorage.setItem('owp23_admin_key',k);var msg=document.getElementById('msg');msg.textContent='A entrar... (se o servidor estava a dormir pode demorar ate 1 minuto)';try{await load();document.getElementById('app').style.display='';msg.textContent='';}catch(e){msg.textContent='Nao foi possivel entrar: '+(e.message||'erro')+'. Verifique a ADMIN_KEY.';}}
 let USERS=[];
 async function load(){
  const d=await api('/api/admin/bookings');USERS=d.users||[];
- document.getElementById('users').innerHTML = USERS.length? '<table><tr><th>Nome</th><th>Email</th></tr>'+USERS.map(function(u){return '<tr><td>'+esc(u.name)+'</td><td>'+esc(u.email)+'</td></tr>';}).join('')+'</table>' : '<div class="muted">Sem clientes.</div>';
- var sel=document.getElementById('mUser');sel.innerHTML=USERS.map(function(u){return '<option value="'+esc(u.id)+'">'+esc(u.name)+' ('+esc(u.email)+')</option>';}).join('');
+ document.getElementById('users').innerHTML = USERS.length? '<table><tr><th>Nome</th><th>Email</th></tr>'+USERS.map(function(u){return '<tr><td>'+esc(u.nome)+'</td><td>'+esc(u.email)+'</td></tr>';}).join('')+'</table>' : '<div class="muted">Sem clientes.</div>';
+ var sel=document.getElementById('mUser');sel.innerHTML=USERS.map(function(u){return '<option value="'+esc(u.id)+'">'+esc(u.nome)+' ('+esc(u.email)+')</option>';}).join('');
  var bs=d.bookings||[];
- document.getElementById('bookings').innerHTML = bs.length? '<table><tr><th>Data</th><th>Cliente</th><th>Detalhes</th><th>Estado</th><th></th></tr>'+bs.map(function(b){var nm=(USERS.find(function(u){return u.id===b.userId;})||{}).name||'(sem conta)';return '<tr><td>'+new Date(b.createdAt).toLocaleString('pt-PT')+'</td><td>'+esc(nm)+'</td><td class="muted">'+esc(JSON.stringify(b.service||b.servico||b.details||b))+'</td><td>'+esc(b.status)+'</td><td><button data-id="'+esc(b.id)+'" onclick="conf(this.dataset.id)">Confirmar</button></td></tr>';}).join('')+'</table>' : '<div class="muted">Sem reservas.</div>';
+ document.getElementById('bookings').innerHTML = bs.length? '<table><tr><th>Data</th><th>Cliente</th><th>Servico</th><th>Quando</th><th>Estado</th><th></th></tr>'+bs.map(function(b){var nm=(USERS.find(function(u){return u.id===b.userId;})||{}).nome||b.nome||'(sem conta)';return '<tr><td>'+new Date(b.criadoEm||b.createdAt||Date.now()).toLocaleString('pt-PT')+'</td><td>'+esc(nm)+'</td><td>'+esc(b.servico||'')+'</td><td class="muted">'+esc((b.data||'')+' '+(b.hora||''))+'</td><td>'+esc(b.estado||b.status||'')+'</td><td><button onclick="conf(\''+b.id+'\')">Confirmar</button></td></tr>';}).join('')+'</table>' : '<div class="muted">Sem reservas.</div>';
 }
 async function conf(id){try{await api('/api/admin/bookings/'+id+'/status',{method:'POST',body:JSON.stringify({status:'confirmada'})});await load();}catch(e){alert(e.message);}}
 async function sendMsg(){try{await api('/api/admin/messages',{method:'POST',body:JSON.stringify({userId:document.getElementById('mUser').value,title:document.getElementById('mTitle').value,body:document.getElementById('mBody').value})});document.getElementById('mOk').textContent='Enviada!';document.getElementById('mTitle').value='';document.getElementById('mBody').value='';}catch(e){alert(e.message);}}
@@ -123,17 +125,30 @@ function userFromReq(req){
   if (!id) return null;
   return db.users.find(u => u.id === id) || null;
 }
-function publicUser(u){ return u ? { id:u.id, name:u.name, email:u.email } : null; }
+function publicUser(u){ return u ? { id:u.id, nome:u.nome||'', email:u.email, telefone:u.telefone||'' } : null; }
 
 // ---------- mensagens / notificacoes ----------
-function addMessage(userId, title, body){
-  const m = { id:uid(), userId, title, body, read:false, createdAt:Date.now() };
+function addMessage(userId, titulo, texto){
+  const m = { id:uid(), userId, titulo:titulo||'', texto:texto||'', lida:false, criadoEm:Date.now() };
   db.messages.push(m); save(db); return m;
+}
+// normaliza uma reserva para os nomes de campos que o site espera
+function toClientBooking(b){
+  return {
+    id:b.id, code:b.code||'',
+    servico: b.servico || b.svcName || '',
+    data: b.data || b.date || '',
+    hora: b.hora || b.time || '',
+    valor: (b.valor!=null ? b.valor : (b.price!=null ? b.price : 0)),
+    estado: b.estado || b.status || 'pendente',
+    criadoEm: b.criadoEm || b.created || b.createdAt || Date.now()
+  };
 }
 
 // ---------- app ----------
 const app = express();
 app.use(express.json({ limit:'1mb' }));
+app.use(express.urlencoded({ extended:true, limit:'1mb' })); // aceita tambem formularios normais
 // CORS (o site no Netlify chama este servidor)
 app.use((req,res,next)=>{
   res.header('Access-Control-Allow-Origin', '*');
@@ -151,11 +166,15 @@ function requireAdmin(req,res,next){
 
 // ---------- AUTH ----------
 app.post('/api/auth/register', (req,res)=>{
-  const { name, email, password } = req.body || {};
-  if (!name || !email || !password) return res.status(400).json({ error:'Preencha nome, email e palavra-passe.' });
-  const em = String(email).trim().toLowerCase();
-  if (db.users.find(u => u.email === em)) return res.status(409).json({ error:'Ja existe uma conta com esse email.' });
-  const u = { id:uid(), name:String(name).trim(), email:em, pass:hashPass(String(password)), createdAt:Date.now() };
+  const b = req.body || {};
+  const email = String(b.email || '').trim().toLowerCase();
+  const password = String(b.password || '');
+  let nome = String(b.nome || b.name || '').trim();
+  const telefone = String(b.telefone || b.phone || '').trim();
+  if (!email || !password) return res.status(400).json({ error:'Preencha email e palavra-passe.' });
+  if (!nome) nome = email.split('@')[0];
+  if (db.users.find(u => u.email === email)) return res.status(409).json({ error:'Ja existe uma conta com esse email.' });
+  const u = { id:uid(), nome, email, telefone, pass:hashPass(password), criadoEm:Date.now() };
   db.users.push(u); save(db);
   addMessage(u.id, 'Bem-vindo a OWP23', 'A sua conta foi criada. Marque a sua sessao quando quiser!');
   res.json({ token:makeToken(u.id), user:publicUser(u) });
@@ -178,32 +197,53 @@ app.get('/api/me', (req,res)=>{
 app.get('/api/me/bookings', (req,res)=>{
   const u = userFromReq(req);
   if (!u) return res.status(401).json({ error:'Sessao nao iniciada' });
-  res.json({ bookings: db.bookings.filter(b => b.userId === u.id).sort((a,b)=>b.createdAt-a.createdAt) });
+  const list = db.bookings.filter(b => b.userId === u.id)
+    .sort((a,b)=>(b.criadoEm||b.createdAt||0)-(a.criadoEm||a.createdAt||0)).map(toClientBooking);
+  res.json({ bookings: list });
 });
 
 app.get('/api/me/messages', (req,res)=>{
   const u = userFromReq(req);
   if (!u) return res.status(401).json({ error:'Sessao nao iniciada' });
-  res.json({ messages: db.messages.filter(m => m.userId === u.id).sort((a,b)=>b.createdAt-a.createdAt) });
+  res.json({ messages: db.messages.filter(m => m.userId === u.id).sort((a,b)=>(b.criadoEm||0)-(a.criadoEm||0)) });
 });
 
+// marcar TODAS as mensagens como lidas
+app.post('/api/me/messages/read', (req,res)=>{
+  const u = userFromReq(req);
+  if (!u) return res.status(401).json({ error:'Sessao nao iniciada' });
+  db.messages.forEach(m=>{ if(m.userId===u.id) m.lida=true; });
+  save(db); res.json({ ok:true });
+});
+
+// marcar UMA mensagem como lida
 app.post('/api/me/messages/:id/read', (req,res)=>{
   const u = userFromReq(req);
   if (!u) return res.status(401).json({ error:'Sessao nao iniciada' });
   const m = db.messages.find(x => x.id === req.params.id && x.userId === u.id);
-  if (m){ m.read = true; save(db); }
+  if (m){ m.lida = true; save(db); }
   res.json({ ok:true });
 });
 
 // ---------- RESERVAS ----------
 app.post('/api/bookings', (req,res)=>{
   const u = userFromReq(req); // pode ser null (reserva sem conta)
-  const b = Object.assign({}, req.body || {}, {
+  const r = req.body || {};
+  const b = {
     id: uid(),
+    code: r.code || '',
     userId: u ? u.id : null,
-    status: 'pendente',
-    createdAt: Date.now()
-  });
+    servico: r.servico || r.svcName || '',
+    data: r.data || r.date || '',
+    hora: r.hora || r.time || '',
+    valor: (r.valor!=null ? r.valor : (r.price!=null ? r.price : 0)),
+    nome: r.nome || r.name || (u?u.nome:''),
+    telefone: r.telefone || r.phone || '',
+    email: r.email || (u?u.email:''),
+    notas: r.notas || r.notes || '',
+    estado: 'pendente',
+    criadoEm: Date.now()
+  };
   db.bookings.push(b); save(db);
   if (u){
     addMessage(u.id, 'Reserva recebida',
@@ -214,19 +254,22 @@ app.post('/api/bookings', (req,res)=>{
 
 // ---------- ADMIN (API) ----------
 app.get('/api/admin/bookings', requireAdmin, (req,res)=>{
-  res.json({ bookings: db.bookings.slice().sort((a,b)=>b.createdAt-a.createdAt), users: db.users.map(publicUser) });
+  res.json({ bookings: db.bookings.slice().sort((a,b)=>(b.criadoEm||b.createdAt||0)-(a.criadoEm||a.createdAt||0)), users: db.users.map(publicUser) });
 });
 
 app.get('/api/admin/messages', requireAdmin, (req,res)=>{
-  res.json({ messages: db.messages.slice().sort((a,b)=>b.createdAt-a.createdAt) });
+  res.json({ messages: db.messages.slice().sort((a,b)=>(b.criadoEm||0)-(a.criadoEm||0)) });
 });
 
 // enviar mensagem/notificacao a um cliente
 app.post('/api/admin/messages', requireAdmin, (req,res)=>{
-  const { userId, title, body } = req.body || {};
-  if (!userId || !title) return res.status(400).json({ error:'Falta userId ou titulo' });
+  const b = req.body || {};
+  const userId = b.userId;
+  const titulo = String(b.titulo || b.title || '');
+  const texto = String(b.texto || b.body || '');
+  if (!userId || !titulo) return res.status(400).json({ error:'Falta userId ou titulo' });
   if (!db.users.find(u => u.id === userId)) return res.status(404).json({ error:'Cliente nao encontrado' });
-  const m = addMessage(userId, String(title), String(body||''));
+  const m = addMessage(userId, titulo, texto);
   res.json({ ok:true, message:m });
 });
 
@@ -234,10 +277,11 @@ app.post('/api/admin/messages', requireAdmin, (req,res)=>{
 app.post('/api/admin/bookings/:id/status', requireAdmin, (req,res)=>{
   const b = db.bookings.find(x => x.id === req.params.id);
   if (!b) return res.status(404).json({ error:'Reserva nao encontrada' });
-  b.status = String((req.body||{}).status || 'confirmada'); save(db);
+  const novo = String((req.body||{}).estado || (req.body||{}).status || 'confirmada');
+  b.estado = novo; save(db);
   if (b.userId){
-    addMessage(b.userId, 'Reserva ' + b.status,
-      'O estado da sua marcacao passou para: ' + b.status + '.');
+    addMessage(b.userId, 'Reserva ' + novo,
+      'O estado da sua marcacao passou para: ' + novo + '.');
   }
   res.json({ ok:true, booking:b });
 });
@@ -247,7 +291,9 @@ app.get('/admin', (req,res)=>{
   res.type('html').send(ADMIN_HTML);
 });
 
-app.get('/', (req,res)=> res.type('html').send('<h2>OWP23 servidor ativo</h2><p>Painel: <a href="/admin">/admin</a></p>'));
+app.get('/version', (req,res)=> res.json({ version: VERSION }));
+
+app.get('/', (req,res)=> res.type('html').send('<h2>OWP23 servidor ativo</h2><p>Versao: <b>' + VERSION + '</b></p><p>Painel: <a href="/admin">/admin</a></p>'));
 
 app.listen(PORT, HOST, ()=>{
   console.log('OWP23 servidor a correr em http://' + HOST + ':' + PORT);
